@@ -30,6 +30,7 @@ def fetch_url(url, selecteur_css):
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
       )
   }
+  texte = ""  # On initialise toujours la variable texte
   try:
     reponse = requests.get(url, headers=headers, timeout=8)
     if reponse.status_code == 200:
