@@ -8,7 +8,7 @@ import requests
 import streamlit as st
 
 st.set_page_config(
-    page_title="Outil Webfetch XPLR ", page_icon="🕸️", layout="centered"
+    page_title="Outil Webfetch XPLR ", page_icon="🔎", layout="centered"
 )
 
 st.title("🔎 Webfetch fiche produit - XPLR")
