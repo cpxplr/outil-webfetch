@@ -25,31 +25,25 @@ def nettoyer_texte(html_element):
 
 
 def trouver_description_auto(soup):
-    """Cherche intelligemment la boîte de description dans le code HTML"""
-    # Liste des classes standards utilisées par Shopify, WooCommerce, Prestashop, etc.
     selecteurs_courants = [
         ".product__description",
         ".product-single__description",
         ".product-description",
-        ".rte",  # Très standard sur Shopify
+        ".rte",
         "[itemprop='description']",
         "#product-description",
         ".description",
         ".product-details__product-description"
     ]
     
-    # 1. On teste les sélecteurs standards
     for selecteur in selecteurs_courants:
         zone = soup.select_one(selecteur)
-        # On vérifie que la zone trouvée contient bien du texte (pour éviter les fausses joies)
         if zone and len(zone.get_text(strip=True)) > 30:
             return zone
             
-    # 2. Si on ne trouve rien, on cherche la section qui contient le plus de paragraphes (<p>)
     meilleure_div = None
     max_p = 0
     for div in soup.find_all('div'):
-        # On ignore les menus et les footers
         classes = " ".join(div.get('class', [])).lower()
         if 'menu' in classes or 'footer' in classes or 'cart' in classes or 'nav' in classes:
             continue
@@ -77,7 +71,7 @@ def fetch_url(url, selecteur_css, smart_clean, retries=2):
   statut = ""
   for tentative in range(retries):
     try:
-      reponse = requests.get(url, headers=headers, timeout=8)
+      reponse = requests.get(url, headers=headers, timeout=10)
       if reponse.status_code == 200:
         soup = BeautifulSoup(reponse.text, "html.parser")
         
@@ -92,7 +86,6 @@ def fetch_url(url, selecteur_css, smart_clean, retries=2):
                   texte = nettoyer_texte(zone)
                   statut = "OK (Ciblage Auto)"
               else:
-                  # Si vraiment on ne trouve rien, on prend toute la page
                   texte = nettoyer_texte(soup.body) if soup.body else ""
                   statut = "OK (Page entière - ciblage échoué)"
           else:
@@ -101,13 +94,13 @@ def fetch_url(url, selecteur_css, smart_clean, retries=2):
         break
       elif reponse.status_code == 429:
         statut = "Bloqué (429)"
-        time.sleep(2)
+        time.sleep(3)
       else:
         statut = f"Erreur {reponse.status_code}"
         break
     except Exception:
       statut = "Erreur de connexion"
-      time.sleep(1)
+      time.sleep(2)
 
   return {"URL_Scrapee": url, "Statut_WebFetch": statut, "Texte_Extrait": texte}
 
@@ -162,12 +155,8 @@ if fichier_upload is not None:
   )
 
   st.subheader("3. Options d'extraction")
-  smart_clean = st.checkbox("🎯 Activer le ciblage intelligent de la description (Recommandé)", value=True, help="L'outil va chercher automatiquement la zone de description dans le code du site.")
-  
-  selecteur_css = st.text_input(
-      "Sélecteur CSS (Optionnel)",
-      help="Laissez vide pour utiliser le ciblage intelligent. Ex: 'div.description' si vous connaissez la classe exacte.",
-  )
+  smart_clean = st.checkbox("🎯 Activer le ciblage intelligent de la description (Recommandé)", value=True)
+  selecteur_css = st.text_input("Sélecteur CSS (Optionnel)", help="Laissez vide pour utiliser le ciblage intelligent.")
 
   if st.button("🚀 Lancer l'aspiration Web", type="primary"):
     urls_uniques = df[colonne_url].dropna().unique().tolist()
@@ -179,10 +168,7 @@ if fichier_upload is not None:
 
     resultats = []
     with ThreadPoolExecutor(max_workers=3) as executor:
-      futures = [
-          executor.submit(fetch_url, url, selecteur_css, smart_clean)
-          for url in urls_uniques
-      ]
+      futures = [executor.submit(fetch_url, url, selecteur_css, smart_clean) for url in urls_uniques]
       for i, future in enumerate(futures):
         res = future.result()
         resultats.append(res)
@@ -190,6 +176,36 @@ if fichier_upload is not None:
         statut_texte.text(f"Progression : {i + 1}/{total} URLs traitées")
 
     df_resultats = pd.DataFrame(resultats)
+    
+    # ---- NOUVEAU : MODE REPÊCHAGE AUTOMATIQUE ----
+    if 'Bloqué (429)' in df_resultats['Statut_WebFetch'].values:
+        urls_429 = df_resultats[df_resultats['Statut_WebFetch'] == 'Bloqué (429)']['URL_Scrapee'].tolist()
+        st.warning(f"🛡️ Le serveur du site a bloqué {len(urls_429)} pages. Lancement du 'Repêchage Furtif'...")
+        
+        barre_repechage = st.progress(0)
+        texte_repechage = st.empty()
+        
+        time.sleep(5) # Pause pour refroidir le serveur
+        
+        for i, url in enumerate(urls_429):
+            time.sleep(3) # Aspiration très lente (1 par 1)
+            res = fetch_url(url, selecteur_css, smart_clean, retries=1)
+            
+            # Mise à jour du résultat dans la liste
+            for r_dict in resultats:
+                if r_dict['URL_Scrapee'] == url:
+                    r_dict['Statut_WebFetch'] = res['Statut_WebFetch']
+                    r_dict['Texte_Extrait'] = res['Texte_Extrait']
+                    break
+                    
+            barre_repechage.progress((i + 1) / len(urls_429))
+            texte_repechage.text(f"Repêchage : {i + 1}/{len(urls_429)} pages")
+        
+        st.success("✅ Repêchage terminé !")
+        # On recrée le DataFrame avec les nouvelles données corrigées
+        df_resultats = pd.DataFrame(resultats)
+    # -----------------------------------------------
+
     df_merged = df.merge(
         df_resultats, left_on=colonne_url, right_on="URL_Scrapee", how="left"
     )
@@ -200,6 +216,10 @@ if fichier_upload is not None:
     if col_titre_choix != "(Aucune)":
       cols_finales.append(col_titre_choix)
 
+    # La colonne URL est maintenant obligatoirement incluse
+    if colonne_url not in cols_finales:
+        cols_finales.append(colonne_url)
+        
     cols_finales.extend(["Statut_WebFetch", "Texte_Extrait"])
     df_final = df_merged[cols_finales]
 
@@ -207,14 +227,9 @@ if fichier_upload is not None:
     echecs = total - succes
 
     if echecs == 0:
-      st.success(
-          f"🎉 Aspiration 100 % réussie ! Les {total} pages ont été récupérées."
-      )
+      st.success(f"🎉 Aspiration 100 % réussie ! (0 blocages)")
     else:
-      st.warning(
-          f"⚠️ Aspiration terminée : {succes}/{total} pages récupérées avec"
-          " succès."
-      )
+      st.warning(f"⚠️ Aspiration terminée : {succes}/{total} pages récupérées avec succès (Les échecs restants sont probablement des pages 404 introuvables).")
 
     buffer = io.BytesIO()
     df_final.to_csv(buffer, index=False, encoding="utf-8-sig")
