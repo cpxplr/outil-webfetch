@@ -11,7 +11,7 @@ st.set_page_config(
     page_title="Outil de WebFetch", page_icon="🕸️", layout="centered"
 )
 
-st.title("🕸️ Outil de WebFetch XPLR")
+st.title("🔎 Scrapping fiche produit - XPLR")
 st.markdown(
     "Uploadez votre fichier CSV ou TSV, paramétrez vos colonnes, et laissez"
     " l'outil aspirer le texte."
