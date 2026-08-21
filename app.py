@@ -11,9 +11,10 @@ st.set_page_config(
     page_title="Outil de WebFetch", page_icon="🕸️", layout="centered"
 )
 
-st.title("🕸️ Outil de WebFetch Universel")
+st.title("🕸️ Outil de WebFetch XPLR")
 st.markdown(
-    "Uploadez votre fichier CSV ou TSV, paramétrez vos colonnes, et laissez l'outil aspirer le texte."
+    "Uploadez votre fichier CSV ou TSV, paramétrez vos colonnes, et laissez"
+    " l'outil aspirer le texte."
 )
 
 
@@ -23,38 +24,39 @@ def nettoyer_texte(html_element):
   return html_element.get_text(separator="\n", strip=True)
 
 
-def fetch_url(url, selecteur_css, retries=3):
+def fetch_url(url, selecteur_css, retries=2):
   headers = {
       "User-Agent": (
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+          " AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0"
+          " Safari/537.36"
       )
   }
   texte = ""
   statut = ""
   for tentative in range(retries):
-      try:
-        reponse = requests.get(url, headers=headers, timeout=10)
-        if reponse.status_code == 200:
-          soup = BeautifulSoup(reponse.text, "html.parser")
-          if selecteur_css:
-            zone = soup.select_one(selecteur_css)
-            texte = nettoyer_texte(zone) if zone else ""
-            statut = "OK" if zone else "Zone introuvable"
-          else:
-            texte = nettoyer_texte(soup.body) if soup.body else ""
-            statut = "OK (Page entière)"
-          break
-        elif reponse.status_code == 429:
-          statut = "Bloqué (429)"
-          time.sleep(3)
+    try:
+      reponse = requests.get(url, headers=headers, timeout=8)
+      if reponse.status_code == 200:
+        soup = BeautifulSoup(reponse.text, "html.parser")
+        if selecteur_css:
+          zone = soup.select_one(selecteur_css)
+          texte = nettoyer_texte(zone) if zone else ""
+          statut = "OK" if zone else "Zone introuvable"
         else:
-          statut = f"Erreur {reponse.status_code}"
-          break
-      except Exception:
-        statut = "Erreur de connexion"
+          texte = nettoyer_texte(soup.body) if soup.body else ""
+          statut = "OK (Page entière)"
+        break
+      elif reponse.status_code == 429:
+        statut = "Bloqué (429)"
         time.sleep(2)
-        
-  time.sleep(1)
+      else:
+        statut = f"Erreur {reponse.status_code}"
+        break
+    except Exception:
+      statut = "Erreur de connexion"
+      time.sleep(1)
+
   return {"URL_Scrapee": url, "Statut_WebFetch": statut, "Texte_Extrait": texte}
 
 
@@ -70,12 +72,48 @@ if fichier_upload is not None:
   st.subheader("2. Paramétrage des colonnes")
 
   colonnes = df.columns.tolist()
-
-  # Nouveaux menus déroulants pour choisir explicitement ce qu'on garde
-  col_id_choix = st.selectbox("Sélectionnez la colonne ID Produit :", ["(Aucune)"] + colonnes)
-  col_titre_choix = st.selectbox("Sélectionnez la colonne Titre du produit :", ["(Aucune)"] + colonnes)
-  colonne_url = st.selectbox("Sélectionnez la colonne contenant les URLs à aspirer :", colonnes)
+  options_avec_aucun = ["(Aucune)"] + colonnes
   
+  # Nettoyage des noms de colonnes (minuscules + suppression des espaces invisibles)
+  colonnes_propres = [str(c).strip().lower() for c in colonnes]
+
+  # Détection automatique ID / Identifiant (Priorité absolue à "identifiant")
+  index_id_defaut = 0
+  for var in ["identifiant", "id", "variant_id", "sku", "id_produit", "product_id"]:
+    if var in colonnes_propres:
+      index_id_defaut = colonnes_propres.index(var) + 1  # +1 pour décaler à cause de "(Aucune)"
+      break
+
+  # Détection automatique Titre (Priorité absolue à "titre")
+  index_titre_defaut = 0
+  for var in ["titre", "title", "nom", "name", "product_name"]:
+    if var in colonnes_propres:
+      index_titre_defaut = colonnes_propres.index(var) + 1
+      break
+
+  # Détection automatique URL (Priorité absolue à "lien")
+  index_url_defaut = 0
+  for var in ["lien", "url", "link", "product_url"]:
+    if var in colonnes_propres:
+      index_url_defaut = colonnes_propres.index(var)
+      break
+
+  col_id_choix = st.selectbox(
+      "Sélectionnez la colonne Identifiant / ID :",
+      options_avec_aucun,
+      index=index_id_defaut,
+  )
+  col_titre_choix = st.selectbox(
+      "Sélectionnez la colonne Titre du produit :",
+      options_avec_aucun,
+      index=index_titre_defaut,
+  )
+  colonne_url = st.selectbox(
+      "Sélectionnez la colonne contenant les URLs à aspirer :",
+      colonnes,
+      index=index_url_defaut,
+  )
+
   selecteur_css = st.text_input(
       "Sélecteur CSS (Optionnel)",
       help="Ex: 'div.description' pour cibler une zone précise.",
@@ -85,14 +123,12 @@ if fichier_upload is not None:
     urls_uniques = df[colonne_url].dropna().unique().tolist()
     total = len(urls_uniques)
 
-    st.info(
-        f"Démarrage de l'aspiration furtive pour {total} liens uniques..."
-    )
+    st.info(f"Démarrage de l'aspiration rapide pour {total} liens uniques...")
     barre_progression = st.progress(0)
     statut_texte = st.empty()
 
     resultats = []
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
       futures = [
           executor.submit(fetch_url, url, selecteur_css)
           for url in urls_uniques
@@ -108,17 +144,13 @@ if fichier_upload is not None:
         df_resultats, left_on=colonne_url, right_on="URL_Scrapee", how="left"
     )
 
-    # Filtrage drastique : on ne garde QUE ce qui a été sélectionné dans les menus
     cols_finales = []
     if col_id_choix != "(Aucune)":
-        cols_finales.append(col_id_choix)
+      cols_finales.append(col_id_choix)
     if col_titre_choix != "(Aucune)":
-        cols_finales.append(col_titre_choix)
-        
-    # On ajoute le résultat de l'aspiration
+      cols_finales.append(col_titre_choix)
+
     cols_finales.extend(["Statut_WebFetch", "Texte_Extrait"])
-    
-    # Application du filtre
     df_final = df_merged[cols_finales]
 
     succes = (df_resultats["Statut_WebFetch"].str.startswith("OK")).sum()
@@ -126,11 +158,13 @@ if fichier_upload is not None:
 
     if echecs == 0:
       st.success(
-          f"🎉 Aspiration 100 % réussie ! Les {total} pages ont été récupérées sans erreur."
+          f"🎉 Aspiration 100 % réussie ! Les {total} pages ont été récupérées"
+          " sans erreur."
       )
     else:
       st.warning(
-          f"⚠️ Aspiration terminée : {succes}/{total} pages récupérées avec succès."
+          f"⚠️ Aspiration terminée : {succes}/{total} pages récupérées avec"
+          " succès."
       )
 
     buffer = io.BytesIO()
