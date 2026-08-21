@@ -8,10 +8,10 @@ import requests
 import streamlit as st
 
 st.set_page_config(
-    page_title="Outil de WebFetch", page_icon="🕸️", layout="centered"
+    page_title="Outil Webfetch XPLR ", page_icon="🕸️", layout="centered"
 )
 
-st.title("🔎 Scrapping fiche produit - XPLR")
+st.title("🔎 Webfetch fiche produit - XPLR")
 st.markdown(
     "Uploadez votre fichier CSV ou TSV, paramétrez vos colonnes, et laissez"
     " l'outil aspirer le texte."
