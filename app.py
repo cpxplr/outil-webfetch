@@ -8,10 +8,10 @@ import requests
 import streamlit as st
 
 st.set_page_config(
-    page_title="Extracteur de Contenu", page_icon="🕸️", layout="centered"
+    page_title="Extracteur de Contenu", page_icon="🔎", layout="centered"
 )
 
-st.title("🕸️ Extracteur de Contenu")
+st.title("🔎 Extracteur de Contenu")
 st.markdown(
     "Uploadez votre fichier CSV ou TSV, paramétrez vos colonnes, et laissez"
     " l'outil aspirer et cibler la description."
